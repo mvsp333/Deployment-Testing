@@ -1,4 +1,4 @@
-name: Docker Build and Push
+name: Docker Build and Push with Deployment
 
 on:
   push:
@@ -31,3 +31,37 @@ jobs:
           # Push the tagged image
           IMAGE_TAG=${{ github.ref_name }}
           docker push praneethmvsp/disease_prediction:${IMAGE_TAG}
+
+      # Step 5: Install SSH key for deployment
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          
+      # Step 6: Deploy to server
+      - name: Deploy to Server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          IMAGE_TAG: ${{ github.ref_name }}
+        run: |
+          # SSH into the server and run deployment commands
+          ssh $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
+            # Pull the latest image
+            docker pull praneethmvsp/disease_prediction:${IMAGE_TAG}
+            
+            # Stop and remove the existing container if it exists
+            docker stop disease_prediction || true
+            docker rm disease_prediction || true
+            
+            # Run the new container
+            docker run -d \
+              --name disease_prediction \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              praneethmvsp/disease_prediction:${IMAGE_TAG}
+            
+            # Clean up old images
+            docker system prune -f
+          ENDSSH
